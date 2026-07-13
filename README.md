@@ -8,12 +8,12 @@ smart grids with ICS protocols integration."* The thesis built a machine-learnin
 anomaly detector for MMS traffic in a simulated smart-grid testbed. This repo takes
 that detector and wraps it with a multi-agent LLM layer that investigates each flagged
 anomaly, retrieves relevant ICS security context, assesses risk, and recommends a
-response — turning a raw anomaly score into an incident report a SOC analyst can act on.
+response, turning a raw anomaly score into an incident report a SOC analyst can act on.
 
 > **Status:** working end-to-end prototype. Detection, feature engineering, the
 > multi-agent pipeline, RAG knowledge retrieval, the API, and the test suite are all
 > implemented and passing. See [What's implemented vs. conceptual](#whats-implemented-vs-conceptual)
-> below for an honest breakdown — some pieces from the original design (real ICS
+> below for an honest breakdown, some pieces from the original design (real ICS
 > captures, Power Automate/Teams delivery, cloud deployment) need infrastructure this
 > repo can describe but not fully exercise on its own.
 
