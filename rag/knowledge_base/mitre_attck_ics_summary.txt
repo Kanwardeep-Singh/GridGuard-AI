@@ -1,0 +1,29 @@
+MITRE ATT&CK for ICS - technique summary notes
+
+Source: MITRE ATT&CK for ICS matrix, publicly available at attack.mitre.org. This file
+contains original summary notes for RAG indexing, not a reproduction of MITRE's text.
+
+Techniques relevant to the attack classes GridGuard AI detects:
+
+T0814 - Denial of Service: Adversaries may flood ICS network communications (e.g. MMS
+requests to an RTU or gateway) to degrade or block availability of control/monitoring
+functions. Typical indicators: sustained spike in request rate, reduced packet size,
+increased latency on the targeted asset.
+
+T0830 - Man in the Middle: Adversaries position themselves between two ICS components to
+intercept or alter traffic in transit. Typical indicators: elevated and inconsistent
+latency/jitter, traffic appearing to originate from or route through an unexpected asset.
+
+T0856 - Spoof Reporting Message / False Data Injection: Adversaries manipulate reported
+process values to mislead operators or downstream automated control logic. Typical
+indicators: reported values statistically inconsistent with sensor physics or historical
+baselines, often concentrated in Write/Report/SampledValues service calls.
+
+T0851 - Rogue Master / T0857 - System Firmware (context) and Replay-style techniques:
+Adversaries capture and resend legitimate protocol messages to trigger unintended actions
+or maintain a false appearance of normal operation. Typical indicators: near-duplicate
+payloads, unnaturally regular inter-arrival timing, high duplicate ratio.
+
+General ICS defense notes: asset criticality should factor into response prioritization -
+protection relays and breakers (e.g. IED-Breaker-*) generally carry higher operational
+impact than monitoring-only assets (e.g. Substation-HMI) if compromised.

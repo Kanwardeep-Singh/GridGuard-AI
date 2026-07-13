@@ -1,0 +1,24 @@
+NIST SP 800-82 Rev. 3 - Guide to Operational Technology (OT) Security (public summary notes)
+
+Source: NIST Special Publication 800-82, publicly available from nist.gov. This file
+contains original summary notes for RAG indexing, not a reproduction of the
+publication text.
+
+Key control themes relevant to smart-grid ICS environments:
+
+- Network segmentation between IT and OT networks (e.g. purdue model zones) limits
+  blast radius of a compromised corporate host reaching field devices.
+- Anomaly-based intrusion detection is recommended as a compensating control where
+  signature-based detection is impractical due to proprietary ICS protocols like MMS.
+- Denial of Service against protection relays and RTUs is a high-impact risk because
+  it can delay protective actions during a genuine grid fault, compounding physical risk.
+- Replay attacks against protocol traffic (e.g. resending valid GOOSE/MMS messages) can
+  be mitigated with sequence numbers, timestamps, and freshness checks at the application layer.
+- False Data Injection against state estimation or metering data is difficult to detect
+  with simple threshold rules because injected values can be crafted to appear plausible;
+  statistical/ML-based detection of deviation from learned patterns is a recommended approach.
+- Man-in-the-middle risk increases where authentication of ICS protocol endpoints is weak
+  or absent; monitoring for unexpected latency/jitter and unusual src/dst asset pairings is
+  a practical detection heuristic in the absence of full protocol-level authentication.
+- Incident response plans for ICS should account for safety implications, not just data
+  confidentiality, and should define clear escalation paths for suspected physical impact.
