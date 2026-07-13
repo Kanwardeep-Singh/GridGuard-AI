@@ -1,0 +1,40 @@
+# GridGuard AI - central configuration
+# Values here are safe defaults; secrets (API keys) come from .env, never from here.
+
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  synthetic_default_rows: 5000
+  attack_ratio: 0.12          # fraction of synthetic traffic that is malicious
+
+detection:
+  isolation_forest:
+    n_estimators: 200
+    contamination: 0.1
+    random_state: 42
+  lof:
+    n_neighbors: 20
+    contamination: 0.1
+  ensemble:
+    # final anomaly = flagged by ANY model ("union") or BOTH ("intersection")
+    strategy: "union"
+    score_threshold: 0.5
+
+agents:
+  orchestrator:
+    max_retries: 2
+    timeout_seconds: 30
+  risk_weights:
+    asset_criticality: 0.35
+    operational_impact: 0.30
+    attack_severity: 0.25
+    confidence: 0.10
+
+rag:
+  chunk_size: 800
+  chunk_overlap: 100
+  top_k: 4
+  index_dir: "rag/index"
+
+automation:
+  notify_severity_threshold: "Medium"   # Low | Medium | High | Critical
