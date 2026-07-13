@@ -1,236 +1,191 @@
 # GridGuard AI
 
-### Multi-Agent Smart Grid Security Copilot
+**A multi-agent smart-grid security copilot: ML anomaly detection + LLM agent investigation for IEC 61850/MMS industrial control systems.**
 
-GridGuard AI is a multi-agent cybersecurity platform designed for smart grid environments. The system extends traditional anomaly detection by combining machine learning, Large Language Models (LLMs), Retrieval-Augmented Generation (RAG), and workflow automation to investigate, explain, and respond to cyber incidents in IEC 61850/MMS-based Industrial Control Systems (ICS).
+This project is an engineering extension of my Master's Thesis at
+Friedrich-Alexander-Universität Erlangen-Nürnberg, *"AI-based anomaly detection in
+smart grids with ICS protocols integration."* The thesis built a machine-learning
+anomaly detector for MMS traffic in a simulated smart-grid testbed. This repo takes
+that detector and wraps it with a multi-agent LLM layer that investigates each flagged
+anomaly, retrieves relevant ICS security context, assesses risk, and recommends a
+response — turning a raw anomaly score into an incident report a SOC analyst can act on.
 
-The project is built as an extension of my Master's Thesis:
+> **Status:** working end-to-end prototype. Detection, feature engineering, the
+> multi-agent pipeline, RAG knowledge retrieval, the API, and the test suite are all
+> implemented and passing. See [What's implemented vs. conceptual](#whats-implemented-vs-conceptual)
+> below for an honest breakdown — some pieces from the original design (real ICS
+> captures, Power Automate/Teams delivery, cloud deployment) need infrastructure this
+> repo can describe but not fully exercise on its own.
 
-**AI-driven Anomaly Detection with ICS Protocols Integration in Smart Grids**
+## Architecture
 
----
-
-# Problem Statement
-
-Traditional anomaly detection systems can identify suspicious activity but often fail to answer critical operational questions:
-
-* Why was this anomaly detected?
-* What asset is impacted?
-* Is this a cyberattack or operational fault?
-* What is the business risk?
-* What should operators do next?
-
-GridGuard AI addresses this gap through AI-powered incident investigation and response.
-
----
-
-# Solution Overview
-
-The platform combines anomaly detection models with a team of specialized LLM agents.
-
-```text
-MMS Traffic
-     │
-     ▼
-Anomaly Detection
-     │
-     ▼
-Agent Orchestrator
-     │
- ┌───┼─────────────────────┐
- ▼   ▼          ▼         ▼
-Detection   Root Cause   Risk   Response
- Agent       Agent      Agent    Agent
-     │
-     ▼
-Incident Report
-     │
-     ▼
-Power Automate
-     │
-     ▼
-Teams / Email Alerts
+```
+                 ┌─────────────────────┐
+ MMS Traffic ──▶ │ Feature Engineering  │
+ (real or        └──────────┬───────────┘
+  synthetic)                ▼
+                 ┌─────────────────────┐
+                 │ Anomaly Detection    │   Isolation Forest + Local Outlier
+                 │ (ensemble)           │   Factor, ensemble union/threshold
+                 └──────────┬───────────┘
+                             ▼ (flagged event)
+                 ┌─────────────────────────────────────────────┐
+                 │           Agent Orchestrator (LangGraph)      │
+                 │                                               │
+                 │  Detection ─▶ ICS Knowledge (RAG) ─▶          │
+                 │  Root Cause ─▶ Risk Assessment ─▶ Response     │
+                 └──────────────────────┬────────────────────────┘
+                                         ▼
+                              Incident Report (JSON)
+                                         ▼
+                      Power Automate webhook ─▶ Teams / Email
 ```
 
----
+## What's implemented vs. conceptual
 
-# Key Features
+| Component | Status | Notes |
+|---|---|---|
+| Feature engineering (temporal + network features) | ✅ Implemented | `detection/feature_engineering.py` |
+| Isolation Forest + LOF ensemble detector | ✅ Implemented, tested | `detection/` |
+| Synthetic MMS traffic generator (DoS/MITM/FDI/Replay) | ✅ Implemented | `data/generate_synthetic_data.py` — Python replacement for the MATLAB/Simulink path, see below |
+| Multi-agent pipeline (5 agents + orchestrator) | ✅ Implemented, tested | `agents/`, built on LangGraph |
+| Provider-agnostic LLM client (Anthropic / OpenAI / mock) | ✅ Implemented | `agents/llm_client.py` — mock provider needs no API key |
+| RAG knowledge retrieval (NIST + MITRE ATT&CK for ICS) | ✅ Implemented | TF-IDF + FAISS, see caveat below |
+| FastAPI service (`/detect`, `/incidents/investigate`) | ✅ Implemented, tested | `api/` |
+| Power Automate → Teams/email webhook | ✅ Code implemented, **not live-tested** | Needs your own Power Automate tenant + flow URL |
+| Docker / docker-compose | ✅ Written, **not build-tested in this environment** (no Docker daemon available here) | Standard slim-Python image; should build cleanly locally |
+| CI (GitHub Actions) | ✅ Implemented | Runs pytest + Docker build on push/PR |
+| MATLAB/Simulink data generation | 📝 From original thesis, not reproduced here | See caveat below |
+| Azure cloud deployment | 📝 Not implemented | Described as a next step, not present in this repo |
+| Digital twin, autonomous remediation, Sentinel integration | 📝 Future work | Intentionally out of scope for this prototype |
 
-## AI-Powered Anomaly Detection
+### Caveats worth knowing about
 
-* Isolation Forest
-* Local Outlier Factor (LOF)
-* Smart Grid Network Monitoring
-* MMS Protocol Analysis
+- **MATLAB/Simulink → Python synthetic data.** The thesis used a Simulink-modeled
+  substation testbed to generate labeled training data. That requires a MATLAB
+  license and a validated grid model, which isn't practical to bundle in an
+  open-source repo. `data/generate_synthetic_data.py` is a from-scratch Python
+  generator that produces statistically distinct feature distributions for normal
+  traffic and four attack classes (DoS, MITM, FDI, Replay), so the rest of the
+  pipeline is runnable and testable by anyone who clones this repo. It is **not**
+  a validated substitute for real grid simulation data — treat it as a development
+  and demo aid, and swap in real captures via `load_real_traffic()` in the same
+  file when you have them.
+- **RAG knowledge base.** The ICS Knowledge Agent retrieves from public NIST
+  SP 800-82 and MITRE ATT&CK for ICS *summary notes* (original text, written for
+  this repo — not reproductions of the source documents). The actual IEC 61850
+  standard is a paywalled IEC publication and isn't indexed here for that reason.
+  If you have licensed access, drop your own `.txt` notes into
+  `rag/knowledge_base/` and rebuild the index (`python -m rag.vectorstore`).
+- **Retrieval uses TF-IDF, not a hosted embedding model.** This was a deliberate
+  choice so the whole pipeline — including RAG — runs with zero API keys and zero
+  external calls. Swap `rag/vectorstore.py` for a real embedding model if you want
+  higher-quality retrieval once you're running with a live LLM provider.
+- **Mock LLM provider.** By default (`LLM_PROVIDER=mock`), agents use a
+  deterministic rule-based stand-in instead of a real LLM call, so the whole
+  system — including CI — runs and is tested without any API key. It does small
+  keyword/threshold heuristics on the input features (e.g. high `request_rate` →
+  DoS) to produce a coherent demo report; it is not doing real reasoning. Set
+  `LLM_PROVIDER=anthropic` or `openai` with a real key in `.env` for actual LLM-driven
+  investigation.
+- **Power Automate delivery** can't be exercised without your own Microsoft 365
+  tenant and a configured flow. The webhook code is real and will POST the incident
+  report JSON to whatever URL you configure; wiring the Teams/email fan-out on the
+  Power Automate side is on you.
 
----
+## Repo structure
 
-## Multi-Agent LLM System
-
-### Detection Agent
-
-Analyzes anomaly outputs and identifies suspicious activity.
-
-### Root Cause Agent
-
-Investigates likely causes of anomalous behavior using protocol context and historical events.
-
-### ICS Knowledge Agent
-
-Retrieves information from:
-
-* IEC 61850 documentation
-* MMS protocol references
-* NIST ICS Security Framework
-* MITRE ATT&CK for ICS
-
-### Risk Assessment Agent
-
-Evaluates:
-
-* Asset Criticality
-* Operational Impact
-* Attack Severity
-* Business Risk
-
-### Response Agent
-
-Generates remediation actions and incident response recommendations.
-
----
-
-# Technology Stack
-
-## AI & Machine Learning
-
-* Python
-* Scikit-learn
-* Isolation Forest
-* Local Outlier Factor
-
-## LLM & Agent Framework
-
-* LangGraph
-* LangChain
-* Llama 3
-* OpenAI GPT
-* FAISS
-
-## Smart Grid Technologies
-
-* IEC 61850
-* MMS Protocol
-* MATLAB Simulink
-
-## Automation & APIs
-
-* FastAPI
-* Power Automate
-* Microsoft Teams Integration
-
----
-
-# Repository Structure
-
-```text
-agents/
-│
-├── detection_agent.py
-├── rootcause_agent.py
-├── risk_agent.py
-├── response_agent.py
-└── orchestrator.py
-
-detection/
-│
-├── isolation_forest.py
-├── lof_detector.py
-└── anomaly_pipeline.py
-
-rag/
-│
-├── ingest.py
-├── vectorstore.py
-└── retriever.py
-
-api/
-└── app.py
+```
+GridGuard-AI/
+├── agents/              # Detection, Root Cause, ICS Knowledge, Risk, Response agents + orchestrator
+├── api/                 # FastAPI app and routes
+├── automation/           # Power Automate webhook integration
+├── config/               # config.yaml + settings loader
+├── data/                 # synthetic MMS traffic generator
+├── detection/             # feature engineering + Isolation Forest / LOF ensemble
+├── rag/                   # knowledge base ingestion, TF-IDF/FAISS vector store, retriever
+├── scripts/               # end-to-end demo script
+├── tests/                 # pytest suite (14 tests, all passing)
+├── Dockerfile / docker-compose.yml
+└── .github/workflows/ci.yml
 ```
 
----
+## Getting started
 
-# Agent Workflow
+```bash
+git clone https://github.com/Kanwardeep-Singh/GridGuard-AI.git
+cd GridGuard-AI
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # defaults to LLM_PROVIDER=mock, no key needed
+```
 
-## Step 1
+Run the end-to-end demo (synthetic data → detection → agent investigation):
+```bash
+python scripts/run_pipeline.py
+```
 
-MMS network traffic is collected from smart grid environments.
+Run the test suite:
+```bash
+pytest tests/ -v
+```
 
-## Step 2
+Run the API:
+```bash
+uvicorn api.app:app --reload --port 8000
+# interactive docs at http://localhost:8000/docs
+```
 
-Machine learning models identify anomalous patterns.
+Or with Docker:
+```bash
+docker compose up --build
+```
 
-## Step 3
+To use a real LLM instead of the mock provider, set in `.env`:
+```
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+```
 
-The orchestrator distributes findings to specialized agents.
+## Sample incident report
 
-## Step 4
-
-Agents investigate anomalies using:
-
-* Detection results
-* Historical events
-* ICS knowledge base
-* Security frameworks
-
-## Step 5
-
-An incident report is generated.
-
-## Step 6
-
-Automated notifications are sent through Power Automate.
-
----
-
-# Sample Incident Report
+Illustrative output from `scripts/run_pipeline.py` against synthetic traffic
+(mock LLM provider) — not a benchmarked production result:
 
 ```json
 {
   "attack_type": "Denial of Service",
   "protocol": "MMS",
-  "target": "NAN Gateway",
+  "target": "NAN-Gateway",
   "severity": "High",
-  "confidence": 0.94,
-  "impact": "Communication disruption",
+  "confidence": 0.8,
+  "impact": "Communication disruption / potential loss of protective function",
   "recommended_actions": [
-    "Throttle MMS Requests",
-    "Block Source IP",
-    "Enable Enhanced Monitoring"
-  ]
+    "Isolate affected asset from the control network segment",
+    "Enable enhanced monitoring on related IEDs",
+    "Notify on-call ICS security engineer"
+  ],
+  "root_cause": "Traffic pattern consistent with a Denial of Service attempt: elevated request rate with reduced packet size.",
+  "knowledge_references": ["..."]
 }
 ```
 
----
+## Thesis lineage
 
-# Architecture
+This repo extends the anomaly-detection core of my thesis work:
 
-![Architecture](screenshots/architecture.png)
+- Feature engineering on MMS protocol communication data for temporal and
+  network-level anomaly signals.
+- ML-based detection of DoS, MITM, False Data Injection, and Replay attacks.
+- Evaluation via precision/recall/F1/detection-latency style metrics (see `tests/`
+  for the sanity-bound checks used here; full benchmark numbers belong to the
+  thesis document itself, not this repo).
 
----
+What's new in this extension is the agent layer on top: instead of stopping at an
+anomaly score, GridGuard AI investigates *why* something was flagged, pulls in
+ICS security context, scores risk, and proposes a response — closer to what a
+SOC analyst workflow actually needs.
 
-# Future Enhancements
+## License
 
-* Real-time packet ingestion
-* SIEM integration
-* Microsoft Sentinel integration
-* Autonomous remediation workflows
-* Digital Twin simulation integration
-* Adaptive agent collaboration
-
----
-
-# Research Background
-
-This project extends research conducted in my Master's Thesis on AI-driven anomaly detection in smart grids using ICS protocols and machine learning techniques.
-
-The objective is to bridge anomaly detection and actionable incident response through explainable AI and multi-agent reasoning.
+MIT — see `LICENSE`.
